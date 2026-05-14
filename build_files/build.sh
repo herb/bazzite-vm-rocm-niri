@@ -28,4 +28,7 @@ dnf5 install -y \
 # ---------------------------------------------------------------------------
 # Enable virtualization services
 # ---------------------------------------------------------------------------
+# Copy pre-seeded system files into the image
+cp -avf /ctx/usr/. /usr/.
+
 systemctl enable libvirtd
