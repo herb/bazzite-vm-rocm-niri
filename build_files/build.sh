@@ -66,3 +66,10 @@ dnf5 install -y \
 systemctl --global add-wants niri.service mako.service
 systemctl --global add-wants niri.service swayidle.service
 systemctl --global add-wants niri.service plasma-polkit-agent.service
+
+# Set Niri as the default SDDM session (Plasma still selectable via session button)
+mkdir -p /etc/sddm.conf.d
+cat > /etc/sddm.conf.d/niri-default.conf << 'EOF'
+[Autologin]
+Session=niri.desktop
+EOF

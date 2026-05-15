@@ -37,6 +37,12 @@ is needed. If niri has issues, the user simply logs into Plasma.
 - No display manager is changed (SDDM stays).
 - No niri configuration file is shipped beyond the upstream defaults.
 
+## Post-Build Change: Default Session
+
+After initial build and feedback, SDDM was configured to default to Niri by
+writing `/etc/sddm.conf.d/niri-default.conf` during the build. Plasma remains
+selectable via the session button on the login screen.
+
 ## Technical Approach
 
 ### Files Created
@@ -77,7 +83,7 @@ systemctl --global add-wants niri.service plasma-polkit-agent.service
 | File | Action |
 |------|--------|
 | `Containerfile` | Add `COPY services /usr/lib/systemd/user/` |
-| `build_files/build.sh` | Append ~25-line niri block |
+| `build_files/build.sh` | Append ~30-line niri block including SDDM default config |
 | `services/plasma-polkit-agent.service` | **Create** |
 | `services/swayidle.service` | **Create** |
 
