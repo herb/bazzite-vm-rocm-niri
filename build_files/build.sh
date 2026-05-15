@@ -29,8 +29,8 @@ dnf5 install -y \
 # Enable WiFi (iwd) — bazzite:stable masks iwd by default but
 # NetworkManager expects it as the wifi.backend
 # ---------------------------------------------------------------------------
-# Remove mask inherited from base image
-rm -f /usr/etc/systemd/system/iwd.service
+# Remove mask inherited from base image (present in both /etc/ and /usr/etc/)
+rm -f /etc/systemd/system/iwd.service /usr/etc/systemd/system/iwd.service
 systemctl enable iwd
 
 # ---------------------------------------------------------------------------
