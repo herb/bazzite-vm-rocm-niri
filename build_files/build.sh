@@ -59,6 +59,7 @@ dnf5 install -y \
     xdg-desktop-portal-gtk \
     xdg-desktop-portal-gnome \
     gnome-keyring \
+    gnome-keyring-pam \
     nautilus \
     polkit-kde
 
@@ -73,3 +74,17 @@ cat > /etc/sddm.conf.d/niri-default.conf << 'EOF'
 [Autologin]
 Session=niri.desktop
 EOF
+
+# ---------------------------------------------------------------------------
+# Keyring / secrets — unlock gnome-keyring at SDDM login so libsecret
+# consumers (ProtonVPN, KeePassXC, browsers, etc.) don't prompt for a
+# password.  Both gnome-keyring and kwallet coexist peacefully via different
+# D-Bus names (org.freedesktop.secrets vs org.kde.kwalletd5); when not
+# running Plasma, kwalletd never starts.
+# ---------------------------------------------------------------------------
+for pam_file in /etc/pam.d/sddm /etc/pam.d/sddm-autologin; do
+    if [ -f "$pam_file" ] && ! grep -q "pam_gnome_keyring\.so" "$pam_file" 2>/dev/null; then
+        sed -i '/^auth.*include/a\auth        optional     pam_gnome_keyring.so' "$pam_file"
+        sed -i '/^session.*include/a\session     optional     pam_gnome_keyring.so auto_start' "$pam_file"
+    fi
+done
