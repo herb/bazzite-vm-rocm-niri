@@ -40,3 +40,29 @@ systemctl enable iwd
 cp -avf /ctx/usr/. /usr/.
 
 systemctl enable libvirtd
+
+# ---------------------------------------------------------------------------
+# Niri window manager — adds as parallel session alongside Plasma
+# (No Plasma packages are removed in this v1.)
+# ---------------------------------------------------------------------------
+
+dnf5 install -y \
+    niri \
+    alacritty \
+    fuzzel \
+    waybar \
+    mako \
+    swayidle \
+    swaylock \
+    swaybg \
+    xwayland-satellite \
+    xdg-desktop-portal-gtk \
+    xdg-desktop-portal-gnome \
+    gnome-keyring \
+    nautilus \
+    polkit-kde
+
+# Wire companion services to start automatically with niri
+systemctl --global add-wants niri.service mako.service
+systemctl --global add-wants niri.service swayidle.service
+systemctl --global add-wants niri.service plasma-polkit-agent.service

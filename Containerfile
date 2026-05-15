@@ -5,6 +5,9 @@ COPY build_files /
 # Base Image
 FROM ghcr.io/ublue-os/bazzite:stable
 
+# Copy custom systemd user services (e.g. polkit agent, idle management)
+COPY services /usr/lib/systemd/user/
+
 ## Other possible base images include:
 # FROM ghcr.io/ublue-os/bazzite:latest
 # FROM ghcr.io/ublue-os/bluefin-nvidia:stable
