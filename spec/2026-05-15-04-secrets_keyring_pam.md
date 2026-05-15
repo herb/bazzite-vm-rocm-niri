@@ -35,26 +35,17 @@ However, two gaps exist in the current build:
 Add `gnome-keyring-pam` to the existing `dnf5 install` block in
 `build_files/build.sh` that installs Niri companion packages.
 
-### PAM config patching
+### PAM config
 
-Rather than overwriting the base image's PAM files (which may contain
-distribution-specific modules), use `sed` to insert lines only when
-`pam_gnome_keyring.so` is not already present.  The two lines are:
-
-```
-auth        optional     pam_gnome_keyring.so
-session     optional     pam_gnome_keyring.so auto_start
-```
-
-These are inserted after the `auth include` and `session include` lines
-respectively, which is the standard position for optional PAM modules.
-Both `/etc/pam.d/sddm` and `/etc/pam.d/sddm-autologin` are patched.
+Write the SDDM PAM config files directly since `bazzite:stable` does not
+ship SDDM at all — no package, no PAM files.  Use the standard Fedora
+pattern with `include` directives and `pam_gnome_keyring.so` lines.
 
 ## Files affected
 
 - `build_files/build.sh` — two additions:
   1. `gnome-keyring-pam` in the package list (~line 61)
-  2. PAM patch block at end of file (~line 76+)
+  2. PAM config write block at end of file (~line 76+)
 
 ## End criteria
 
@@ -62,3 +53,10 @@ Both `/etc/pam.d/sddm` and `/etc/pam.d/sddm-autologin` are patched.
 - Both `/etc/pam.d/sddm` and `/etc/pam.d/sddm-autologin` contain the two
   `pam_gnome_keyring.so` lines.
 - The image builds successfully.
+
+## Issues & Resolutions
+
+| Issue | Resolution |
+|-------|-----------|
+| `bazzite:stable` does not ship SDDM or its PAM files, so the original `sed`-based patching approach had nothing to patch | Replaced `sed` with direct `cat >` writes of the PAM files |
+| `bazzite:stable` lacks SDDM entirely — the sdmd.conf.d config in the original build script was also inert | Decided not to install SDDM in this change scope; SDDM is assumed to be provided by the deployment mechanism and our PAM files will be present when it is |

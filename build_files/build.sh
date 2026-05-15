@@ -68,7 +68,13 @@ systemctl --global add-wants niri.service mako.service
 systemctl --global add-wants niri.service swayidle.service
 systemctl --global add-wants niri.service plasma-polkit-agent.service
 
-# Set Niri as the default SDDM session (Plasma still selectable via session button)
+# Set Niri as the default session in plasmalogin (native DM in bazzite:stable)
+# and SDDM (belt-and-suspenders if deployed on a system using SDDM).
+cat > /etc/plasmalogin.conf.d/niri.conf << 'EOF'
+[Autologin]
+Session=niri.desktop
+EOF
+
 mkdir -p /etc/sddm.conf.d
 cat > /etc/sddm.conf.d/niri-default.conf << 'EOF'
 [Autologin]
@@ -76,15 +82,35 @@ Session=niri.desktop
 EOF
 
 # ---------------------------------------------------------------------------
-# Keyring / secrets — unlock gnome-keyring at SDDM login so libsecret
-# consumers (ProtonVPN, KeePassXC, browsers, etc.) don't prompt for a
-# password.  Both gnome-keyring and kwallet coexist peacefully via different
-# D-Bus names (org.freedesktop.secrets vs org.kde.kwalletd5); when not
-# running Plasma, kwalletd never starts.
+# Keyring / secrets — unlock gnome-keyring at login so libsecret consumers
+# (ProtonVPN, KeePassXC, browsers, etc.) don't prompt for password.
+# The base image's plasmalogin PAM already includes pam_gnome_keyring.so in
+# /usr/lib/pam.d/plasmalogin{,-autologin}.  We add SDDM PAM files here for
+# setups that swap SDDM in.
+#
+# Both gnome-keyring and kwallet coexist via different D-Bus names
+# (org.freedesktop.secrets vs org.kde.kwalletd5); outside Plasma, kwalletd
+# never starts, so there is no bus conflict.
 # ---------------------------------------------------------------------------
-for pam_file in /etc/pam.d/sddm /etc/pam.d/sddm-autologin; do
-    if [ -f "$pam_file" ] && ! grep -q "pam_gnome_keyring\.so" "$pam_file" 2>/dev/null; then
-        sed -i '/^auth.*include/a\auth        optional     pam_gnome_keyring.so' "$pam_file"
-        sed -i '/^session.*include/a\session     optional     pam_gnome_keyring.so auto_start' "$pam_file"
-    fi
-done
+mkdir -p /etc/pam.d
+
+cat > /etc/pam.d/sddm << 'EOF'
+#%PAM-1.0
+auth        include      system-auth
+auth        optional     pam_gnome_keyring.so
+account     include      system-auth
+password    include      system-auth
+session     include      system-auth
+session     optional     pam_gnome_keyring.so auto_start
+EOF
+
+cat > /etc/pam.d/sddm-autologin << 'EOF'
+#%PAM-1.0
+auth        required     pam_env.so
+auth        required     pam_permit.so
+auth        optional     pam_gnome_keyring.so
+account     include      system-auth
+password    include      system-auth
+session     include      system-auth
+session     optional     pam_gnome_keyring.so auto_start
+EOF
