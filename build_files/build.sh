@@ -64,13 +64,6 @@ dnf5 install -y \
     nautilus \
     polkit-kde
 
-# ---------------------------------------------------------------------------
-# AGS (Aylur's GTK Shell) — customizable widget shell for the desktop
-# Installed from solopasha/hyprland COPR (referenced by AGS wiki for Fedora)
-# ---------------------------------------------------------------------------
-dnf5 copr enable solopasha/hyprland
-dnf5 install -y aylurs-gtk-shell2
-
 # Wire companion services to start automatically with niri
 systemctl --global add-wants niri.service mako.service
 systemctl --global add-wants niri.service swayidle.service
