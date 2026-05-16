@@ -52,7 +52,11 @@ FROM ghcr.io/ublue-os/bazzite:stable
 # Copy custom systemd user services (e.g. polkit agent, idle management)
 COPY services /usr/lib/systemd/user/
 
-# Copy AGS binary + data from the build stage
+# Create /var/usrlocal so /usr/local -> ../var/usrlocal resolves (bootc dangling symlink)
+# Must be done before COPY --from or the target is unreachable in buildah
+RUN mkdir -p /var/usrlocal
+
+# Copy AGS binary + Astal libraries + data from the build stage
 COPY --from=ags-builder /usr/local/ /usr/local/
 
 ## Other possible base images include:
