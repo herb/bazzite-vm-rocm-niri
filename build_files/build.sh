@@ -49,6 +49,7 @@ systemctl enable libvirtd
 dnf5 install -y \
     niri \
     alacritty \
+    brightnessctl \
     fuzzel \
     waybar \
     mako \
