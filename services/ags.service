@@ -1,0 +1,14 @@
+[Unit]
+Description=Aylur's GTK Shell — customizable widget shell
+PartOf=graphical-session.target
+After=graphical-session.target
+Requisite=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/ags
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=5sec
+
+[Install]
+WantedBy=niri.service
