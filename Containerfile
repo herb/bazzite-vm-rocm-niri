@@ -12,8 +12,8 @@ COPY services /usr/lib/systemd/user/
 # Build stage: compile Astal runtime libraries + AGS binary from source
 # No COPR provides functional Astal or AGS packages for Fedora 44.
 # Astal = Vala GObject libraries, AGS = Go binary + JS data.
-# All build deps (vala, golang, meson, etc.) stay in this stage;
-# only the installed artifacts (/usr/local/) are copied to the final image.
+# Installs to /usr/ (not /usr/local/) because in bootc images /usr/local
+# is a symlink to /var/usrlocal which is a runtime-only mount.
 # ---------------------------------------------------------------------------
 FROM ghcr.io/ublue-os/bazzite:stable AS ags-builder
 
@@ -27,21 +27,19 @@ RUN --mount=type=cache,dst=/var/cache \
         golang npm gjs \
         wayland-protocols-devel \
         python3 && \
-    # /usr/local -> ../var/usrlocal (dangling symlink in bootc images)
-    mkdir -p /var/usrlocal && \
-    # Build Astal libraries
+    # Build Astal libraries (io -> gtk4 -> gjs)
     git clone --depth 1 https://github.com/aylur/astal.git /tmp/astal && \
-    meson setup /tmp/astal/lib/astal/io/build /tmp/astal/lib/astal/io && \
+    meson setup --prefix /usr /tmp/astal/lib/astal/io/build /tmp/astal/lib/astal/io && \
     meson install -C /tmp/astal/lib/astal/io/build && \
-    meson setup /tmp/astal/lib/astal/gtk4/build /tmp/astal/lib/astal/gtk4 && \
+    meson setup --prefix /usr /tmp/astal/lib/astal/gtk4/build /tmp/astal/lib/astal/gtk4 && \
     meson install -C /tmp/astal/lib/astal/gtk4/build && \
-    meson setup /tmp/astal/lang/gjs/build /tmp/astal/lang/gjs && \
+    meson setup --prefix /usr /tmp/astal/lang/gjs/build /tmp/astal/lang/gjs && \
     meson install -C /tmp/astal/lang/gjs/build && \
     # Build AGS
     git clone --depth 1 https://github.com/aylur/ags.git /tmp/ags && \
     cd /tmp/ags && \
     HOME=/tmp GOCACHE=/tmp/go-cache GOPATH=/tmp/go npm install && \
-    meson setup build && \
+    meson setup build --prefix /usr && \
     GOCACHE=/tmp/go-cache GOPATH=/tmp/go meson install -C build
 
 # ---------------------------------------------------------------------------
@@ -52,12 +50,9 @@ FROM ghcr.io/ublue-os/bazzite:stable
 # Copy custom systemd user services (e.g. polkit agent, idle management)
 COPY services /usr/lib/systemd/user/
 
-# Create /var/usrlocal so /usr/local -> ../var/usrlocal resolves (bootc dangling symlink)
-# Must be done before COPY --from or the target is unreachable in buildah
-RUN mkdir -p /var/usrlocal
-
-# Copy AGS binary + Astal libraries + data from the build stage
-COPY --from=ags-builder /usr/local/ /usr/local/
+# Copy AGS binary + Astal libraries + data from the build stage.
+# Build stage uses --prefix /usr so artifacts embed correct paths.
+COPY --from=ags-builder /usr/ /usr/
 
 ## Other possible base images include:
 # FROM ghcr.io/ublue-os/bazzite:latest
