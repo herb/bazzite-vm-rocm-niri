@@ -19,6 +19,10 @@ FROM ghcr.io/ublue-os/bazzite:stable AS ags-builder
 
 RUN --mount=type=cache,dst=/var/cache \
     --mount=type=cache,dst=/var/log \
+    # wireplumber(-libs) is versionlocked in the base bazzite image;
+    # lift the lock so we can install wireplumber-devel (which upgrades
+    # to the matching Fedora version).
+    dnf5 versionlock delete wireplumber-libs wireplumber 2>/dev/null; \
     dnf5 -y install \
         meson ninja-build git-core \
         vala valadoc \
@@ -26,6 +30,10 @@ RUN --mount=type=cache,dst=/var/cache \
         glib2-devel gtk4-devel gtk4-layer-shell-devel \
         golang npm gjs \
         wayland-protocols-devel \
+        wireplumber-devel \
+        NetworkManager-libnm-devel \
+        json-glib-devel \
+        libgudev-devel \
         python3 && \
     # Build Astal libraries (io -> gtk4 -> gjs)
     git clone --depth 1 https://github.com/aylur/astal.git /tmp/astal && \
