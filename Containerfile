@@ -41,6 +41,16 @@ RUN --mount=type=cache,dst=/var/cache \
     meson install -C /tmp/astal/lib/astal/io/build && \
     meson setup --prefix /usr /tmp/astal/lib/astal/gtk4/build /tmp/astal/lib/astal/gtk4 && \
     meson install -C /tmp/astal/lib/astal/gtk4/build && \
+    # Build Astal service libraries
+    for lib in wireplumber network battery mpris bluetooth apps powerprofiles; do \
+        meson setup --prefix /usr /tmp/astal/lib/$lib/build /tmp/astal/lib/$lib && \
+        meson install -C /tmp/astal/lib/$lib/build; \
+    done && \
+    # notifd and brightness default to cli=true which requires quarrel-0.1 (not built)
+    for lib in notifd brightness; do \
+        meson setup --prefix /usr /tmp/astal/lib/$lib/build /tmp/astal/lib/$lib -Dcli=false && \
+        meson install -C /tmp/astal/lib/$lib/build; \
+    done && \
     meson setup --prefix /usr /tmp/astal/lang/gjs/build /tmp/astal/lang/gjs && \
     meson install -C /tmp/astal/lang/gjs/build && \
     # Build AGS
