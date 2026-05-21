@@ -83,6 +83,22 @@ Session=niri.desktop
 EOF
 
 # ---------------------------------------------------------------------------
+# GStreamer — phonto (GPU-accelerated video wallpaper)
+# gstreamer1-vaapi is obsolete; VA-API support merged into
+# gstreamer1-plugins-bad-free as of GStreamer 1.28.
+# ---------------------------------------------------------------------------
+dnf5 install -y \
+    gstreamer1-plugins-base \
+    gstreamer1-plugins-good \
+    gstreamer1-plugins-bad-free
+
+# ---------------------------------------------------------------------------
+# COPR: sdegler/hyprland — hyprlock (GPU-accelerated screen locker)
+# ---------------------------------------------------------------------------
+dnf5 -y copr enable sdegler/hyprland
+dnf5 install -y hyprlock
+
+# ---------------------------------------------------------------------------
 # Keyring / secrets — unlock gnome-keyring at login so libsecret consumers
 # (ProtonVPN, KeePassXC, browsers, etc.) don't prompt for password.
 # The base image's plasmalogin PAM already includes pam_gnome_keyring.so in
