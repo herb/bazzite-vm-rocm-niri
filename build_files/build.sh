@@ -93,6 +93,12 @@ dnf5 install -y \
     gstreamer1-plugins-bad-free
 
 # ---------------------------------------------------------------------------
+# Scanner — brscan5 for Brother USB scanners (SANE backend)
+# ---------------------------------------------------------------------------
+dnf5 install -y \
+    brscan5
+
+# ---------------------------------------------------------------------------
 # COPR: sdegler/hyprland — hyprlock (GPU-accelerated screen locker)
 # ---------------------------------------------------------------------------
 dnf5 -y copr enable sdegler/hyprland
