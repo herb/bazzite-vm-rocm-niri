@@ -99,7 +99,8 @@ dnf5 install -y \
 dnf5 install -y gtk2
 curl -Lo /tmp/brscan5.rpm \
     "https://download.brother.com/welcome/dlf104036/brscan5-1.5.1-0.x86_64.rpm"
-dnf5 install -y /tmp/brscan5.rpm
+mkdir -p /var/opt
+rpm -Uvh --nosignature --nodigest /tmp/brscan5.rpm
 rm -f /tmp/brscan5.rpm
 
 # ---------------------------------------------------------------------------
