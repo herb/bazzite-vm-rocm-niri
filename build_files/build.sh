@@ -94,9 +94,13 @@ dnf5 install -y \
 
 # ---------------------------------------------------------------------------
 # Scanner — brscan5 for Brother USB scanners (SANE backend)
+# Brother's driver is not in any Fedora repo; download the RPM directly.
 # ---------------------------------------------------------------------------
-dnf5 install -y \
-    brscan5
+dnf5 install -y gtk2
+curl -Lo /tmp/brscan5.rpm \
+    "https://download.brother.com/welcome/dlf104036/brscan5-1.5.1-0.x86_64.rpm"
+dnf5 install -y /tmp/brscan5.rpm
+rm -f /tmp/brscan5.rpm
 
 # ---------------------------------------------------------------------------
 # COPR: sdegler/hyprland — hyprlock (GPU-accelerated screen locker)
