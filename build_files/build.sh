@@ -103,6 +103,14 @@ mkdir -p /var/opt
 rpm -Uvh --nosignature --nodigest /tmp/brscan5.rpm
 rm -f /tmp/brscan5.rpm
 
+# /opt is now a real (immutable) directory in the image. The RPM's postinst
+# creates /etc/opt/brother/scanner/brscan5/brsanenetdevice.cfg as a symlink
+# to /opt/brother/... which would be read-only at runtime. Replace it with
+# a regular file so brsaneconfig5 can write network scanner config.
+rm /etc/opt/brother/scanner/brscan5/brsanenetdevice.cfg
+cp /opt/brother/scanner/brscan5/brsanenetdevice.cfg \
+   /etc/opt/brother/scanner/brscan5/brsanenetdevice.cfg
+
 # ---------------------------------------------------------------------------
 # COPR: sdegler/hyprland — hyprlock (GPU-accelerated screen locker)
 # ---------------------------------------------------------------------------
