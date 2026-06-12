@@ -52,6 +52,7 @@ dnf5 install -y \
     brightnessctl \
     fuzzel \
     waybar \
+    wlopm \
     mako \
     swayidle \
     swaylock \
