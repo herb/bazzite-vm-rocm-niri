@@ -39,4 +39,4 @@ exceeded the available free space. This is a hard disk capacity limit on the Azu
 
 2. **Clean dnf cache inside the image** — added `dnf5 clean all` at the end of `build.sh`. This removes `/var/cache/libdnf5/` and `/var/cache/dnf/` from the final image layers, reducing the pushed image size by hundreds of MiB.
 
-3. **Redirect Buildah temporary storage to `/mnt`** — the runner has a 14 GB temp disk mounted at `/mnt` that is mostly idle. Set `TMPDIR=/mnt` on the build and push steps so blob staging uses the temp disk instead of the root filesystem.
+3. **Redirect Buildah temporary storage to `/mnt`** — the runner has a 14 GB temp disk mounted at `/mnt` that is mostly idle. Add a step to pre-create a world-writable directory (`/mnt/buildah-tmp`, `chmod 1777`) and set `TMPDIR=/mnt/buildah-tmp` on the push step only (the build step didn't need it, and setting `TMPDIR=/mnt` directly on it caused a `permission denied` error since `/mnt` is root-owned).
