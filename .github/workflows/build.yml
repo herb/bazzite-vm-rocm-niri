@@ -46,9 +46,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      # This is optional, but if you see that your builds are way too big for the runners, you can enable this by uncommenting the following lines:
-      - name: Maximize build space
-        uses: ublue-os/remove-unwanted-software@695eb75bc387dbcd9685a8e72d23439d8686cba6
+      # Aggressively free disk space on the runner.
+      # Standard ubuntu-24.04 runners have ~84 GB total, ~14 GB free after pre-installed
+      # tools. Our image (bazzite base + ROCm + QEMU + Niri) plus buildah temp storage
+      # exceeds that. This action removes Android SDK, .NET, Haskell, CodeQL, Docker
+      # images, and large packages, recovering ~10–15 GB.
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          codeql: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
 
       - name: Get current date
         id: date
@@ -95,6 +108,8 @@ jobs:
       - name: Build Image
         id: build_image
         uses: redhat-actions/buildah-build@7a95fa7ee0f02d552a32753e7414641a04307056 # v2
+        env:
+          TMPDIR: /mnt
         with:
           containerfiles: |
             ./Containerfile
@@ -144,6 +159,7 @@ jobs:
         if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
         id: push
         env:
+          TMPDIR: /mnt
           REGISTRY_USER: ${{ github.actor }}
           REGISTRY_PASSWORD: ${{ github.token }}
         with:

@@ -19,3 +19,24 @@ Append `atop \` to the existing `dnf5 install` block for VM/virtualization packa
 
 ## Files Affected
 - `build_files/build.sh` — add `atop` to the package list
+
+## Issues & Resolutions
+
+### CI Runner Disk Space Exhaustion
+
+**Issue**: After the atop install (and general image growth from prior additions like ROCm, QEMU, Niri), the GitHub Actions CI began failing during the `push-to-registry` step with `no space left on device`. The error occurred when Buildah tried to store blob data at `/var/tmp/container_images_storage...` during the push.
+
+**Root cause**: Standard GitHub-hosted runners (`ubuntu-24.04`) have an 84 GB OS disk with only ~14 GB guaranteed free after pre-installed tools. The combined size of:
+- Pulling the bazzite:stable base image
+- Buildah's temporary blob storage during build and push
+- The final image layers (ROCm, QEMU, Niri, etc.)
+
+exceeded the available free space. This is a hard disk capacity limit on the Azure DS2_v2 VM backing the runner, not a daily/weekly/monthly quota.
+
+**Resolution (three changes)**:
+
+1. **Free more disk space before the build** — switched from `ublue-os/remove-unwanted-software` to `jlumbroso/free-disk-space@main` with all removal options enabled (dotnet, android, haskell, codeql, docker-images, large-packages). This recovers ~10–15 GB additional space.
+
+2. **Clean dnf cache inside the image** — added `dnf5 clean all` at the end of `build.sh`. This removes `/var/cache/libdnf5/` and `/var/cache/dnf/` from the final image layers, reducing the pushed image size by hundreds of MiB.
+
+3. **Redirect Buildah temporary storage to `/mnt`** — the runner has a 14 GB temp disk mounted at `/mnt` that is mostly idle. Set `TMPDIR=/mnt` on the build and push steps so blob staging uses the temp disk instead of the root filesystem.

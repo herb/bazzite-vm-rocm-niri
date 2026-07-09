@@ -152,3 +152,8 @@ password    include      system-auth
 session     include      system-auth
 session     optional     pam_gnome_keyring.so auto_start
 EOF
+
+# ---------------------------------------------------------------------------
+# Final cleanup — remove dnf cache to shrink final image layers
+# ---------------------------------------------------------------------------
+dnf5 clean all
