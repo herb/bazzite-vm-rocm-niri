@@ -14,6 +14,7 @@ dnf5 install -y \
     qemu-kvm \
     virt-manager \
     edk2-ovmf \
+    atop \
     guestfs-tools
 
 # ---------------------------------------------------------------------------
