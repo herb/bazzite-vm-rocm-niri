@@ -105,6 +105,21 @@ mkdir -p /var/opt
 rpm -Uvh --nosignature --nodigest /tmp/brscan5.rpm
 rm -f /tmp/brscan5.rpm
 
+# Brother's RPM creates these unowned links in %post, but they do not survive
+# the bootc image build. Recreate the complete link chains in immutable /usr.
+for library in \
+    libLxBsDeviceAccs.so.1.0.0 \
+    libLxBsNetDevAccs.so.1.0.0 \
+    libLxBsScanCoreApi.so.3.2.6 \
+    libLxBsUsbDevAccs.so.1.0.0; do
+    link1="${library%.*}"
+    link2="${link1%.*}"
+    ln -sfn "/opt/brother/scanner/brscan5/${library}" "/usr/lib64/${library}"
+    ln -sfn "/usr/lib64/${library}" "/usr/lib64/${link1}"
+    ln -sfn "/usr/lib64/${link1}" "/usr/lib64/${link2}"
+    test -e "/usr/lib64/${link2}"
+done
+
 # /opt is now a real (immutable) directory in the image. The RPM's postinst
 # creates /etc/opt/brother/scanner/brscan5/brsanenetdevice.cfg as a symlink
 # to /opt/brother/... which would be read-only at runtime. Replace it with
