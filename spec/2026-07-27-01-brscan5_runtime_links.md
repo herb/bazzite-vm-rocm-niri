@@ -83,3 +83,19 @@ five required SONAMEs to `/opt/brother/scanner/brscan5`, loads
 `libLxBsScanCoreApi.so.3` and `libsane-brother5.so.1.0.7` through `ctypes.CDLL`
 without an error, retains `brother5` in `/etc/sane.d/dll.conf`, and does not
 contain the temporary `/ctx` build context.
+
+### rpm-ostree layering removed the unowned links
+
+**Issue**: The corrected image `6b395b39` and its unlayered base commit
+`d1bb363c` contain all expected `libLxBs` link chains. The booted deployment
+`9a601f32` adds the layered `gphoto2` package. Comparing those commits shows
+that rpm-ostree deleted every unowned `libLxBs` link under `/usr/lib` and
+`/usr/lib64` while recomposing `/usr`; the RPM-owned libraries under `/opt`
+and `libsane-brother5` links remain.
+
+**Conclusion**: The installed image is correct, but image-created links under
+`/usr` are not durable across rpm-ostree package layering. The durable fix is
+to make the links RPM-owned (for example, with a small compatibility RPM), or
+to eliminate package layering by baking all requested packages such as
+`gphoto2` into the image. Merely recreating unowned links in `build.sh` cannot
+survive a later layered package transaction.

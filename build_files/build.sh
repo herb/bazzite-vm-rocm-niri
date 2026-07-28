@@ -52,6 +52,7 @@ dnf5 install -y \
     alacritty \
     brightnessctl \
     fuzzel \
+    gphoto2 \
     waybar \
     wlopm \
     mako \
