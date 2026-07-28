@@ -99,3 +99,17 @@ to make the links RPM-owned (for example, with a small compatibility RPM), or
 to eliminate package layering by baking all requested packages such as
 `gphoto2` into the image. Merely recreating unowned links in `build.sh` cannot
 survive a later layered package transaction.
+
+### gphoto2 baked into the image to eliminate layering
+
+**Fix**: Moved `gphoto2` from an explicit `rpm-ostree install` on the booted
+host into `build_files/build.sh` as a base image package. Staged
+`rpm-ostree uninstall gphoto2` on the current boot so that the next deployment
+has zero layered packages and no `/usr` recomposition.
+
+**Verification**: Built `localhost/bazzite-vm-rocm-niri:gphoto2-baked` locally
+with `podman build --no-cache --pull=newer`. The resulting container installs
+both `gphoto2` and `brscan5`, resolves all four `libLxBs` SONAME chains into
+`/opt/brother/scanner/brscan5`, loads all five libraries through
+`ctypes.CDLL`, enables `brother5` in `/etc/sane.d/dll.conf`, and cleans up
+the temporary `/ctx` build context.
