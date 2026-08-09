@@ -57,7 +57,6 @@ dnf5 install -y \
     wlopm \
     mako \
     swayidle \
-    swaylock \
     swaybg \
     xwayland-satellite \
     xdg-desktop-portal-gtk \
@@ -71,6 +70,12 @@ dnf5 install -y \
 systemctl --global add-wants niri.service mako.service
 systemctl --global add-wants niri.service swayidle.service
 systemctl --global add-wants niri.service plasma-polkit-agent.service
+
+# swaylock-plugin (built from source in the Containerfile) replaces upstream
+# swaylock. It is a CLI-superset fork whose background is pluggable (--command).
+# Alias it as `swaylock` so swayidle.service (`swaylock -f`) and any configs
+# pick up the fork without editing call sites.
+ln -sf /usr/bin/swaylock-plugin /usr/bin/swaylock
 
 # Set Niri as the default session in plasmalogin (native DM in bazzite:stable)
 # and SDDM (belt-and-suspenders if deployed on a system using SDDM).
