@@ -61,32 +61,6 @@ RUN --mount=type=cache,dst=/var/cache \
     GOCACHE=/tmp/go-cache GOPATH=/tmp/go meson install -C build
 
 # ---------------------------------------------------------------------------
-# Build stage: compile swaylock-plugin from source
-# No Fedora/COPR package provides it. swaylock-plugin (mstoeckl/swaylock-plugin)
-# is a fork of swaylock with a pluggable background (--command) and is a CLI
-# superset of upstream swaylock, so the final stage aliases it as `swaylock`.
-# Built with PAM so no setuid is required; the install provides
-# /etc/pam.d/swaylock-plugin (the PAM service name is hardcoded in pam.c).
-# ---------------------------------------------------------------------------
-FROM ghcr.io/ublue-os/bazzite:stable AS swaylock-builder
-
-RUN --mount=type=cache,dst=/var/cache \
-    --mount=type=cache,dst=/var/log \
-    --mount=type=tmpfs,dst=/tmp \
-    dnf5 -y install \
-        meson ninja-build git-core gcc \
-        wayland-devel wayland-protocols-devel \
-        libxkbcommon-devel cairo-devel gdk-pixbuf2-devel \
-        pam-devel systemd-devel && \
-    git clone --depth 1 --branch v1.8.7 \
-        https://github.com/mstoeckl/swaylock-plugin.git /tmp/swaylock-plugin && \
-    meson setup --prefix /usr /tmp/swaylock-plugin/build /tmp/swaylock-plugin && \
-    # /tmp is a tmpfs scoped to this RUN step, so stage the install at a
-    # persistent path for the final-stage COPY.
-    meson install -C /tmp/swaylock-plugin/build --destdir /swaylock-install && \
-    rm -rf /tmp/swaylock-plugin
-
-# ---------------------------------------------------------------------------
 # Final stage
 # ---------------------------------------------------------------------------
 FROM ghcr.io/ublue-os/bazzite:stable
@@ -97,10 +71,6 @@ COPY services /usr/lib/systemd/user/
 # Copy AGS binary + Astal libraries + data from the build stage.
 # Build stage uses --prefix /usr so artifacts embed correct paths.
 COPY --from=ags-builder /usr/ /usr/
-
-# Copy swaylock-plugin artifacts (binaries, pam file, man page, completions)
-# from its build stage. Only installed files land in the final image.
-COPY --from=swaylock-builder /swaylock-install/ /
 
 ## Other possible base images include:
 # FROM ghcr.io/ublue-os/bazzite:latest
