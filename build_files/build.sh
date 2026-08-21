@@ -27,16 +27,11 @@ dnf5 install -y \
     rocm-smi
 
 # ---------------------------------------------------------------------------
-# Enable WiFi (iwd) — bazzite:stable masks iwd by default but
-# NetworkManager expects it as the wifi.backend
-# ---------------------------------------------------------------------------
-# Remove mask inherited from base image (present in both /etc/ and /usr/etc/)
-rm -f /etc/systemd/system/iwd.service /usr/etc/systemd/system/iwd.service
-systemctl enable iwd
-
-# ---------------------------------------------------------------------------
 # Enable virtualization services
 # ---------------------------------------------------------------------------
+# Note: bazzite:stable no longer ships iwd at all (removed ~Aug 2026);
+# NetworkManager now uses the stock wpa_supplicant wifi backend, so the
+# old mask/unmask workaround here was removed with it.
 # Copy pre-seeded system files into the image
 cp -avf /ctx/usr/. /usr/.
 
