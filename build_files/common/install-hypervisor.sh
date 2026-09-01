@@ -12,7 +12,10 @@ dnf5 install -y \
     virt-manager \
     edk2-ovmf \
     atop \
-    guestfs-tools
+    guestfs-tools \
+    jq \
+    rsync \
+    wireguard-tools
 
 # Install immutable image assets copied into the scratch build context.
 cp -avf /ctx/usr/. /usr/.
