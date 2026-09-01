@@ -1,6 +1,58 @@
-# image-template
+# Bazzite and Bluefin Images
 
-This repository is meant to be a template for building your own custom [bootc](https://github.com/bootc-dev/bootc) image. This template is the recommended way to make customizations to any image published by the Universal Blue Project.
+This repository builds two public Universal Blue bootc images:
+
+- `ghcr.io/herb/bazzite-vm-rocm-niri`: Bazzite workstation image with the
+  existing ROCm, Niri, AGS, scanner, and virtualization customizations.
+- `ghcr.io/herb/bluefin-hypervisor`: minimal Bluefin image for libvirt/QEMU
+  k3s hypervisors.
+
+Both images include the shared virtualization and host-monitoring baseline used
+by the homelab Ansible playbooks. They are built and published independently.
+
+## Local Builds
+
+Build and verify both images sequentially to limit local resource usage:
+
+```bash
+just verify-images
+```
+
+Build or verify one flavor:
+
+```bash
+just build-image bazzite
+just build-image bluefin
+just verify-container bazzite
+just verify-container bluefin
+```
+
+The container verification checks shared RPMs and executable paths, then checks
+the image-specific package and file contract. It runs inside a clean Podman
+container rather than relying only on build output.
+
+## Hypervisor Baseline
+
+The shared layer installs QEMU, libvirt, KVM support, OVMF firmware,
+`guestfs-tools`, and `atop`, declares the persistent `qemu` system identity,
+and enables `libvirtd.service`. The image build fails if the package, command,
+firmware, or service contract is incomplete.
+
+Bluefin intentionally does not inherit the Bazzite workstation stack.
+
+## Deployment
+
+Deploy a tested date tag or digest first. Use `bootc rollback` or the previous
+known-good deployment if boot validation fails. Add a Bluefin host to Ansible's
+server and k3s hypervisor groups only after verifying `/dev/kvm`, libvirt,
+OVMF, SELinux, and a disposable VM on the booted host.
+
+The repository contains no fleet secrets. Signing is performed in GitHub
+Actions using the repository secret and is not available to pull requests.
+
+---
+
+The image definitions are bootc containers based on Universal Blue images.
 
 # Community
 
@@ -102,11 +154,12 @@ This will show you all the info you need to know about your current image. The i
 
 ### Step 2c: Changing Names
 
-Change the first line in the [Justfile](./Justfile) to your image's name.
+Image names are selected in `.github/workflows/build.yml` and should not be
+changed without updating deployment references and disk-image configuration.
 
 To commit and push all the files changed and added in step 2 into your Github repository:
 ```bash
-git add Containerfile Justfile cosign.pub
+git add Containerfile.bazzite Containerfile.bluefin Justfile cosign.pub
 git commit -m "Initial Setup"
 git push
 ```
@@ -122,17 +175,21 @@ This should queue your image for the next reboot, which you can do immediately a
 
 # Repository Contents
 
-## Containerfile
+## Containerfiles
 
-The [Containerfile](./Containerfile) defines the operations used to customize the selected image.This file is the entrypoint for your image build, and works exactly like a regular podman Containerfile. For reference, please see the [Podman Documentation](https://docs.podman.io/en/latest/Introduction.html).
+`Containerfile.bazzite` and `Containerfile.bluefin` define the two image build
+pipelines. The common hypervisor layer is under `build_files/common/`.
 
 ## build.sh
 
-The [build.sh](./build_files/build.sh) file is called from your Containerfile. It is the best place to install new packages or make any other customization to your system. There are customization examples contained within it for your perusal.
+The image-specific scripts under `build_files/bazzite/` and
+`build_files/bluefin/` are called from their respective Containerfiles.
 
 ## build.yml
 
-The [build.yml](./.github/workflows/build.yml) Github Actions workflow creates your custom OCI image and publishes it to the Github Container Registry (GHCR). By default, the image name will match the Github repository name. There are several environment variables at the start of the workflow which may be of interest to change.
+The [build.yml](./.github/workflows/build.yml) GitHub Actions workflow builds
+and publishes both OCI images to the GitHub Container Registry (GHCR). The
+matrix selects the image name and matching Containerfile for each flavor.
 
 # Building Disk Images
 
@@ -144,7 +201,7 @@ This template provides a way to upload the disk images that is generated from th
 
 The [build-disk.yml](./.github/workflows/build-disk.yml) Github Actions workflow creates a disk image from your OCI image by utilizing the [bootc-image-builder](https://osbuild.org/docs/bootc/). In order to use this workflow you must complete the following steps:
 
-1. Modify `disk_config/iso.toml` to point to your custom container image before generating an ISO image.
+1. Select `bazzite` or `bluefin` when dispatching the disk workflow.
 2. If you changed your image name from the default in `build.yml` then in the `build-disk.yml` file edit the `IMAGE_REGISTRY`, `IMAGE_NAME` and `DEFAULT_TAG` environment variables with the correct values. If you did not make changes, skip this step.
 3. Finally, if you want to upload your disk images to S3 then you will need to add your S3 configuration to the repository's Action secrets. This can be found by going to your repository settings, under `Secrets and Variables` -> `Actions`. You will need to add the following
   - `S3_PROVIDER` - Must match one of the values from the [supported list](https://rclone.org/s3/)
@@ -173,7 +230,6 @@ To use it, you must have installed [just](https://just.systems/man/en/introducti
 
 ## Environment Variables
 
-- `image_name`: The name of the image (default: "image-template").
 - `default_tag`: The default tag for the image (default: "latest").
 - `bib_image`: The Bootc Image Builder (BIB) image (default: "quay.io/centos-bootc/bootc-image-builder:latest").
 
@@ -181,14 +237,15 @@ To use it, you must have installed [just](https://just.systems/man/en/introducti
 
 ### `just build`
 
-Builds a container image using Podman.
+Builds one explicit image flavor using Podman.
 
 ```bash
-just build $target_image $tag
+just build bazzite latest
+just build bluefin latest
 ```
 
 Arguments:
-- `$target_image`: The tag you want to apply to the image (default: `$image_name`).
+- `$flavor`: Either `bazzite` or `bluefin`.
 - `$tag`: The tag for the image (default: `$default_tag`).
 
 ## Building and Running Virtual Machines and ISOs
@@ -200,15 +257,15 @@ The below commands all build QCOW2 images. To produce or use a different type of
 Builds a QCOW2 virtual machine image.
 
 ```bash
-just build-qcow2 $target_image $tag
+just build-qcow2 bazzite latest
 ```
 
 ### `just rebuild-qcow2`
 
-Rebuilds a QCOW2 virtual machine image.
+Rebuilds a QCOW2 virtual machine image for one explicit flavor.
 
 ```bash
-just rebuild-vm $target_image $tag
+just rebuild-qcow2 bazzite latest
 ```
 
 ### `just run-vm-qcow2`
@@ -216,7 +273,7 @@ just rebuild-vm $target_image $tag
 Runs a virtual machine from a QCOW2 image.
 
 ```bash
-just run-vm-qcow2 $target_image $tag
+just run-vm-qcow2 bazzite latest
 ```
 
 ### `just spawn-vm`

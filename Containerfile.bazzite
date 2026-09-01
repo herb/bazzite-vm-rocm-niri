@@ -1,12 +1,7 @@
-# Allow build scripts to be copied from an explicit stage.
+# Bazzite image with workstation customizations and the shared hypervisor base.
 FROM scratch AS ctx
-COPY build_files /
-
-# Base Image
-FROM ghcr.io/ublue-os/bazzite:stable
-
-# Copy custom systemd user services (e.g. polkit agent, idle management)
-COPY services /usr/lib/systemd/user/
+COPY build_files/common /
+COPY build_files/bazzite /
 
 # ---------------------------------------------------------------------------
 # Build stage: compile Astal runtime libraries + AGS binary from source
@@ -66,7 +61,7 @@ RUN --mount=type=cache,dst=/var/cache \
 FROM ghcr.io/ublue-os/bazzite:stable
 
 # Copy custom systemd user services (e.g. polkit agent, idle management)
-COPY services /usr/lib/systemd/user/
+COPY services/bazzite /usr/lib/systemd/user/
 
 # Copy AGS binary + Astal libraries + data from the build stage.
 # Build stage uses --prefix /usr so artifacts embed correct paths.
@@ -102,7 +97,11 @@ COPY --from=ctx / /ctx/
 RUN --mount=type=cache,dst=/var/cache \
     --mount=type=cache,dst=/var/log \
     --mount=type=tmpfs,dst=/tmp \
+    /ctx/install-hypervisor.sh && \
     /ctx/build.sh && \
+    /ctx/verify-hypervisor.sh && \
+    /ctx/verify-container.sh bazzite && \
+    install -Dm755 /ctx/verify-container.sh /usr/bin/verify-container.sh && \
     rm -rf /ctx
     
 ### LINTING

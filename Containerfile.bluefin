@@ -1,0 +1,20 @@
+# Minimal Bluefin hypervisor image.
+FROM scratch AS ctx
+COPY build_files/common /
+COPY build_files/bluefin /
+
+FROM ghcr.io/ublue-os/bluefin:stable
+
+COPY --from=ctx / /ctx/
+
+RUN --mount=type=cache,dst=/var/cache \
+    --mount=type=cache,dst=/var/log \
+    --mount=type=tmpfs,dst=/tmp \
+    /ctx/install-hypervisor.sh && \
+    /ctx/build.sh && \
+    /ctx/verify-hypervisor.sh && \
+    /ctx/verify-container.sh bluefin && \
+    install -Dm755 /ctx/verify-container.sh /usr/bin/verify-container.sh && \
+    rm -rf /ctx
+
+RUN bootc container lint

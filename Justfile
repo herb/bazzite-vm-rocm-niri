@@ -1,6 +1,8 @@
-export image_name := env("IMAGE_NAME", "image-template") # output image name, usually same as repo name, change as needed
 export default_tag := env("DEFAULT_TAG", "latest")
 export bib_image := env("BIB_IMAGE", "quay.io/centos-bootc/bootc-image-builder:latest")
+
+bazzite_image_name := "bazzite-vm-rocm-niri"
+bluefin_image_name := "bluefin-hypervisor"
 
 alias build-vm := build-qcow2
 alias rebuild-vm := rebuild-qcow2
@@ -71,7 +73,7 @@ sudoif command *args:
 # This Justfile recipe builds a container image using Podman.
 #
 # Arguments:
-#   $target_image - The tag you want to apply to the image (default: $image_name).
+#   $flavor - The image flavor to build: bazzite or bluefin.
 #   $tag - The tag for the image (default: $default_tag).
 #
 # The script constructs the version string using the tag and the current date.
@@ -85,20 +87,63 @@ sudoif command *args:
 # This will build an image 'aurora:lts' with DX and GDX enabled.
 #
 
-# Build the image using the specified parameters
-build $target_image=image_name $tag=default_tag:
+# Build the image for one explicit flavor.
+build $flavor $tag=default_tag:
     #!/usr/bin/env bash
+    set -euo pipefail
 
     BUILD_ARGS=()
     if [[ -z "$(git status -s)" ]]; then
         BUILD_ARGS+=("--build-arg" "SHA_HEAD_SHORT=$(git rev-parse --short HEAD)")
     fi
 
+    case "{{ flavor }}" in
+        bazzite)
+            target_image="{{ bazzite_image_name }}"
+            containerfile=Containerfile.bazzite
+            ;;
+        bluefin)
+            target_image="{{ bluefin_image_name }}"
+            containerfile=Containerfile.bluefin
+            ;;
+        *)
+            echo "unknown image flavor: {{ flavor }}" >&2
+            exit 2
+            ;;
+    esac
+
     podman build \
         "${BUILD_ARGS[@]}" \
         --pull=newer \
         --tag "${target_image}:${tag}" \
+        --file "${containerfile}" \
         .
+
+# Build and verify one named image flavor.
+build-image $flavor $tag=default_tag:
+    just build {{ flavor }} {{ tag }}
+    just verify-container {{ flavor }} {{ tag }}
+
+# Verify a locally built image inside a clean Podman container.
+verify-container $flavor $tag=default_tag:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{ flavor }}" in
+        bazzite) image="{{ bazzite_image_name }}" ;;
+        bluefin) image="{{ bluefin_image_name }}" ;;
+        *) echo "unknown image flavor: {{ flavor }}" >&2; exit 2 ;;
+    esac
+    container="verify-{{ flavor }}-$$"
+    trap 'podman rm --force "${container}" >/dev/null 2>&1 || true' EXIT
+    podman run --name "${container}" \
+        --entrypoint /usr/bin/bash \
+        "${image}:{{ tag }}" -c \
+        "/usr/bin/verify-container.sh {{ flavor }}"
+
+# Build and verify both images sequentially to limit local resource usage.
+verify-images:
+    just build-image bazzite
+    just build-image bluefin
 
 # Command: _rootful_load_image
 # Description: This script checks if the current user is root or running under sudo. If not, it attempts to resolve the image tag using podman inspect.
@@ -117,7 +162,7 @@ build $target_image=image_name $tag=default_tag:
 # 3. If the image is found, load it into rootful podman using podman scp.
 # 4. If the image is not found, pull it from the remote repository into reootful podman.
 
-_rootful_load_image $target_image=image_name $tag=default_tag:
+_rootful_load_image $target_image=bazzite_image_name $tag=default_tag:
     #!/usr/bin/bash
     set -eoux pipefail
 
@@ -197,32 +242,65 @@ _build-bib $target_image $tag $type $config: (_rootful_load_image target_image t
 # Example: just _rebuild-bib localhost/fedora latest qcow2 disk_config/disk.toml
 _rebuild-bib $target_image $tag $type $config: (build target_image tag) && (_build-bib target_image tag type config)
 
-# Build a QCOW2 virtual machine image
+# Build a QCOW2 virtual machine image for one explicit flavor.
 [group('Build Virtal Machine Image')]
-build-qcow2 $target_image=("localhost/" + image_name) $tag=default_tag: && (_build-bib target_image tag "qcow2" "disk_config/disk.toml")
+build-qcow2 $flavor $tag=default_tag:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{ flavor }}" in
+        bazzite) target_image="{{ bazzite_image_name }}" ;;
+        bluefin) target_image="{{ bluefin_image_name }}" ;;
+        *) echo "unknown image flavor: {{ flavor }}" >&2; exit 2 ;;
+    esac
+    just build "{{ flavor }}" "{{ tag }}"
+    just _build-bib "$target_image" "{{ tag }}" "qcow2" "disk_config/disk.toml"
 
 # Build a RAW virtual machine image
 [group('Build Virtal Machine Image')]
-build-raw $target_image=("localhost/" + image_name) $tag=default_tag: && (_build-bib target_image tag "raw" "disk_config/disk.toml")
+build-raw $flavor $tag=default_tag:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{ flavor }}" in
+        bazzite) target_image="{{ bazzite_image_name }}" ;;
+        bluefin) target_image="{{ bluefin_image_name }}" ;;
+        *) echo "unknown image flavor: {{ flavor }}" >&2; exit 2 ;;
+    esac
+    just build "{{ flavor }}" "{{ tag }}"
+    just _build-bib "$target_image" "{{ tag }}" "raw" "disk_config/disk.toml"
 
 # Build an ISO virtual machine image
 [group('Build Virtal Machine Image')]
-build-iso $target_image=("localhost/" + image_name) $tag=default_tag: && (_build-bib target_image tag "iso" "disk_config/iso.toml")
+build-iso $flavor $tag=default_tag:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{ flavor }}" in
+        bazzite)
+            target_image="{{ bazzite_image_name }}"
+            config="disk_config/iso-bazzite.toml"
+            ;;
+        bluefin)
+            target_image="{{ bluefin_image_name }}"
+            config="disk_config/iso-bluefin.toml"
+            ;;
+        *) echo "unknown image flavor: {{ flavor }}" >&2; exit 2 ;;
+    esac
+    just build "{{ flavor }}" "{{ tag }}"
+    just _build-bib "$target_image" "{{ tag }}" "iso" "$config"
 
 # Rebuild a QCOW2 virtual machine image
 [group('Build Virtal Machine Image')]
-rebuild-qcow2 $target_image=("localhost/" + image_name) $tag=default_tag: && (_rebuild-bib target_image tag "qcow2" "disk_config/disk.toml")
+rebuild-qcow2 $flavor $tag=default_tag: && (build-qcow2 flavor tag)
 
 # Rebuild a RAW virtual machine image
 [group('Build Virtal Machine Image')]
-rebuild-raw $target_image=("localhost/" + image_name) $tag=default_tag: && (_rebuild-bib target_image tag "raw" "disk_config/disk.toml")
+rebuild-raw $flavor $tag=default_tag: && (build-raw flavor tag)
 
 # Rebuild an ISO virtual machine image
 [group('Build Virtal Machine Image')]
-rebuild-iso $target_image=("localhost/" + image_name) $tag=default_tag: && (_rebuild-bib target_image tag "iso" "disk_config/iso.toml")
+rebuild-iso $flavor $tag=default_tag: && (build-iso flavor tag)
 
 # Run a virtual machine with the specified image type and configuration
-_run-vm $target_image $tag $type $config:
+_run-vm $flavor $tag $type:
     #!/usr/bin/bash
     set -eoux pipefail
 
@@ -234,7 +312,7 @@ _run-vm $target_image $tag $type $config:
 
     # Build the image if it does not exist
     if [[ ! -f "${image_file}" ]]; then
-        just "build-${type}" "$target_image" "$tag"
+        just "build-${type}" "$flavor" "$tag"
     fi
 
     # Determine an available port to use
@@ -265,15 +343,15 @@ _run-vm $target_image $tag $type $config:
 
 # Run a virtual machine from a QCOW2 image
 [group('Run Virtal Machine')]
-run-vm-qcow2 $target_image=("localhost/" + image_name) $tag=default_tag: && (_run-vm target_image tag "qcow2" "disk_config/disk.toml")
+run-vm-qcow2 $flavor $tag=default_tag: && (_run-vm flavor tag "qcow2")
 
 # Run a virtual machine from a RAW image
 [group('Run Virtal Machine')]
-run-vm-raw $target_image=("localhost/" + image_name) $tag=default_tag: && (_run-vm target_image tag "raw" "disk_config/disk.toml")
+run-vm-raw $flavor $tag=default_tag: && (_run-vm flavor tag "raw")
 
 # Run a virtual machine from an ISO
 [group('Run Virtal Machine')]
-run-vm-iso $target_image=("localhost/" + image_name) $tag=default_tag: && (_run-vm target_image tag "iso" "disk_config/iso.toml")
+run-vm-iso $flavor $tag=default_tag: && (_run-vm flavor tag "iso")
 
 # Run a virtual machine using systemd-vmspawn
 [group('Run Virtal Machine')]
@@ -292,7 +370,6 @@ spawn-vm rebuild="0" type="qcow2" ram="6G":
       --network-user-mode \
       --vsock=false --pass-ssh-key=false \
       -i ./output/**/*.{{ type }}
-
 
 # Runs shell check on all Bash scripts
 lint:

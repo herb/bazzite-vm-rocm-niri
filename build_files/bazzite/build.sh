@@ -3,21 +3,6 @@
 set -ouex pipefail
 
 # ---------------------------------------------------------------------------
-# VM / virtualization packages
-# ---------------------------------------------------------------------------
-dnf5 install -y \
-    qemu \
-    libvirt \
-    libvirt-client \
-    libvirt-daemon-kvm \
-    libvirt-daemon-config-network \
-    qemu-kvm \
-    virt-manager \
-    edk2-ovmf \
-    atop \
-    guestfs-tools
-
-# ---------------------------------------------------------------------------
 # ROCm — replaces mesa-libOpenCL with AMD's compute stack
 # ---------------------------------------------------------------------------
 dnf5 swap -y mesa-libOpenCL rocm-opencl
