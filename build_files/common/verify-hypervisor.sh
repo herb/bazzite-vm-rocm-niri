@@ -22,7 +22,7 @@ for package in "${packages[@]}"; do
     rpm -q "$package" >/dev/null
 done
 
-for executable in virsh qemu-img qemu-system-x86_64 virt-customize atop jq rsync wg wg-quick; do
+for executable in virsh qemu-img qemu-system-x86_64 virt-builder virt-customize atop jq rsync wg wg-quick; do
     test -x "/usr/bin/$executable"
 done
 

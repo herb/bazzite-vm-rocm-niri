@@ -17,10 +17,12 @@ that Astal can offer the full set of sub-libraries:
 
 - Astal modules are Vala introspectable libraries; compilation requires the
   corresponding C headers and pkg-config files at build time.
-- `wireplumber-libs` is **versionlocked** in `bazzite:stable` at a custom git
-  build (`0.5.12-1.fc44.bazzite.0.0.git...`), which blocks `dnf5 install` of
-  the Fedora `wireplumber-devel` because the locked version doesn't exist in
-  standard repos.  The fix is to lift the lock before installing.
+- `wireplumber-libs` and `wireplumber` are **versionlocked** in `bazzite:stable`
+  at a custom git build (`0.5.12-1.fc44.bazzite.0.0.git...`). The current base
+  also provides `terra-wireplumber`, which conflicts with Fedora's
+  `wireplumber-devel`. The fix is to lift the locks and use DNF's
+  `--allowerasing` option so the matching Fedora package family can replace
+  Terra in the source-build stage.
 - The other three packages install cleanly — `NetworkManager-libnm` is also
   versionlocked but the `-devel` matches the locked version.
 

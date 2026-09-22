@@ -14,11 +14,11 @@ FROM ghcr.io/ublue-os/bazzite:stable AS ags-builder
 
 RUN --mount=type=cache,dst=/var/cache \
     --mount=type=cache,dst=/var/log \
-    # wireplumber(-libs) is versionlocked in the base bazzite image;
-    # lift the lock so we can install wireplumber-devel (which upgrades
-    # to the matching Fedora version).
+    # Bazzite's Terra WirePlumber is versionlocked and conflicts with Fedora's
+    # wireplumber-devel; lift the lock and allow the matching Fedora packages
+    # to replace it for this source-build stage.
     dnf5 versionlock delete wireplumber-libs wireplumber 2>/dev/null; \
-    dnf5 -y install \
+    dnf5 -y install --allowerasing \
         meson ninja-build git-core \
         vala valadoc \
         gobject-introspection-devel \
