@@ -14,10 +14,11 @@ FROM ghcr.io/ublue-os/bazzite:stable AS ags-builder
 
 RUN --mount=type=cache,dst=/var/cache \
     --mount=type=cache,dst=/var/log \
+    set -e; \
     # Bazzite's Terra WirePlumber is versionlocked and conflicts with Fedora's
     # wireplumber-devel; lift the lock and allow the matching Fedora packages
     # to replace it for this source-build stage.
-    dnf5 versionlock delete wireplumber-libs wireplumber 2>/dev/null; \
+    dnf5 versionlock delete wireplumber-libs wireplumber 2>/dev/null || true; \
     dnf5 -y install --allowerasing \
         meson ninja-build git-core \
         vala valadoc \
@@ -27,33 +28,47 @@ RUN --mount=type=cache,dst=/var/cache \
         wayland-protocols-devel \
         wireplumber-devel \
         NetworkManager-libnm-devel \
+        libsoup3-devel \
         json-glib-devel \
         libgudev-devel \
         python3 && \
+    mkdir -p /out && \
+    mkdir -p /usr/share/vala/vapi /usr/share/gir-1.0 && \
+    export PKG_CONFIG_PATH="/out/usr/lib64/pkgconfig:/out/usr/share/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}" \
+        GI_TYPELIB_PATH="/out/usr/lib64/girepository-1.0:/out/usr/lib/girepository-1.0" \
+        LD_LIBRARY_PATH="/out/usr/lib64:/out/usr/lib" \
+        LIBRARY_PATH="/out/usr/lib64:/out/usr/lib" \
+        CPATH="/out/usr/include${CPATH:+:$CPATH}" && \
+    expose_staged_metadata() { \
+        for file in /out/usr/share/vala/vapi/*; do [ -e "$file" ] && ln -sfn "$file" /usr/share/vala/vapi/; done; \
+        for file in /out/usr/share/gir-1.0/*; do [ -e "$file" ] && ln -sfn "$file" /usr/share/gir-1.0/; done; \
+    } && \
     # Build Astal libraries (io -> gtk4 -> gjs)
     git clone --depth 1 https://github.com/aylur/astal.git /tmp/astal && \
     meson setup --prefix /usr /tmp/astal/lib/astal/io/build /tmp/astal/lib/astal/io && \
-    meson install -C /tmp/astal/lib/astal/io/build && \
+    DESTDIR=/out meson install -C /tmp/astal/lib/astal/io/build && expose_staged_metadata && \
     meson setup --prefix /usr /tmp/astal/lib/astal/gtk4/build /tmp/astal/lib/astal/gtk4 && \
-    meson install -C /tmp/astal/lib/astal/gtk4/build && \
+    DESTDIR=/out meson install -C /tmp/astal/lib/astal/gtk4/build && expose_staged_metadata && \
     # Build Astal service libraries
-    for lib in wireplumber network battery mpris bluetooth apps powerprofiles; do \
-        meson setup --prefix /usr /tmp/astal/lib/$lib/build /tmp/astal/lib/$lib && \
-        meson install -C /tmp/astal/lib/$lib/build; \
+    for lib in wireplumber network battery bluetooth apps powerprofiles; do \
+        meson setup --prefix /usr /tmp/astal/lib/$lib/build /tmp/astal/lib/$lib || exit 1; \
+        DESTDIR=/out meson install -C /tmp/astal/lib/$lib/build || exit 1; \
+        expose_staged_metadata || exit 1; \
     done && \
-    # notifd and brightness default to cli=true which requires quarrel-0.1 (not built)
-    for lib in notifd brightness; do \
-        meson setup --prefix /usr /tmp/astal/lib/$lib/build /tmp/astal/lib/$lib -Dcli=false && \
-        meson install -C /tmp/astal/lib/$lib/build; \
+    # MPRIS, notifd, and brightness CLIs require quarrel-0.1, which is not built.
+    for lib in mpris notifd brightness; do \
+        meson setup --prefix /usr /tmp/astal/lib/$lib/build /tmp/astal/lib/$lib -Dcli=false || exit 1; \
+        DESTDIR=/out meson install -C /tmp/astal/lib/$lib/build || exit 1; \
+        expose_staged_metadata || exit 1; \
     done && \
     meson setup --prefix /usr /tmp/astal/lang/gjs/build /tmp/astal/lang/gjs && \
-    meson install -C /tmp/astal/lang/gjs/build && \
+    DESTDIR=/out meson install -C /tmp/astal/lang/gjs/build && expose_staged_metadata && \
     # Build AGS
     git clone --depth 1 https://github.com/aylur/ags.git /tmp/ags && \
     cd /tmp/ags && \
     HOME=/tmp GOCACHE=/tmp/go-cache GOPATH=/tmp/go npm install && \
     meson setup build --prefix /usr && \
-    GOCACHE=/tmp/go-cache GOPATH=/tmp/go meson install -C build
+    DESTDIR=/out GOCACHE=/tmp/go-cache GOPATH=/tmp/go meson install -C build
 
 # ---------------------------------------------------------------------------
 # Final stage
@@ -63,9 +78,27 @@ FROM ghcr.io/ublue-os/bazzite:stable
 # Copy custom systemd user services (e.g. polkit agent, idle management)
 COPY services/bazzite /usr/lib/systemd/user/
 
-# Copy AGS binary + Astal libraries + data from the build stage.
-# Build stage uses --prefix /usr so artifacts embed correct paths.
-COPY --from=ags-builder /usr/ /usr/
+# Install runtime dependencies without copying the builder's replacement
+# WirePlumber packages or other build dependencies into the final image.
+RUN dnf5 install -y gjs gtk4-layer-shell libsoup3 && dnf5 clean all
+
+# Copy only the runtime payload staged with the /usr prefix.
+COPY --from=ags-builder /out/usr/bin/ags /usr/bin/ags
+COPY --from=ags-builder /out/usr/lib64/libastal-*.so* /usr/lib64/
+COPY --from=ags-builder /out/usr/lib64/girepository-1.0/Astal*.typelib /usr/lib64/girepository-1.0/
+COPY --from=ags-builder /out/usr/share/astal/gjs/ /usr/share/astal/gjs/
+COPY --from=ags-builder /out/usr/share/ags/ /usr/share/ags/
+COPY --from=ags-builder /out/usr/share/glib-2.0/schemas/io.astal.notifd.gschema.xml /usr/share/glib-2.0/schemas/
+RUN test -e /usr/lib64/libgtk4-layer-shell.so.0 && \
+    ln -sfn libgtk4-layer-shell.so.0 /usr/lib64/libgtk4-layer-shell.so && \
+    for library in /usr/lib64/libastal-*.so.[0-9]*.[0-9]*.[0-9]*; do \
+        test -f "$library" || continue; \
+        soname="${library%.*.*}"; \
+        unversioned="${library%%.so.*}.so"; \
+        ln -sfn "${library##*/}" "$soname"; \
+        ln -sfn "${soname##*/}" "$unversioned"; \
+    done && \
+    glib-compile-schemas /usr/share/glib-2.0/schemas && ldconfig
 
 ## Other possible base images include:
 # FROM ghcr.io/ublue-os/bazzite:latest
