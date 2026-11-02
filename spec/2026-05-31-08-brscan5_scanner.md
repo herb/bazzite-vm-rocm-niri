@@ -52,15 +52,16 @@ the RPM from Brother. The Brother RPM lacks proper embedded digests, so
 
 ```bash
 dnf5 install -y gtk2
-curl -Lo /tmp/brscan5.rpm \
-    "https://download.brother.com/welcome/dlf104036/brscan5-1.6.2-0.x86_64.rpm"
+curl -fsSL --retry 3 -o /tmp/brscan5.rpm \
+    "https://download.brother.com/welcome/dlf104036/brscan5-1.7.0-0.x86_64.rpm"
 rpm -Uvh --nosignature /tmp/brscan5.rpm
 rm -f /tmp/brscan5.rpm
 ```
 
 The RPM URL (`dlf104036`) is the stable Brother CDN path for the x86_64
-variant of brscan5 1.6.2-0, as documented in the AUR and Void Linux package
-sources. The `--nosignature` flag is required because Brother does not GPG-sign
+variant of brscan5 1.7.0-0, as used by the AUR `brscan5` package. (Void Linux's
+template still pins 1.6.2 — check Brother's CDN directly, not a downstream
+packager.) The `--nosignature` flag is required because Brother does not GPG-sign
 their RPMs.
 
 ## Files Affected

@@ -78,10 +78,12 @@ dnf5 install -y \
 # ---------------------------------------------------------------------------
 # Scanner — brscan5 for Brother USB scanners (SANE backend)
 # Brother's driver is not in any Fedora repo; download the RPM directly.
+# -f makes a removed or renamed release fail the build loudly instead of
+# writing an HTML "Not found" page to /tmp/brscan5.rpm for rpm -Uvh to choke on.
 # ---------------------------------------------------------------------------
 dnf5 install -y gtk2
-curl -Lo /tmp/brscan5.rpm \
-    "https://download.brother.com/welcome/dlf104036/brscan5-1.6.2-0.x86_64.rpm"
+curl -fsSL --retry 3 -o /tmp/brscan5.rpm \
+    "https://download.brother.com/welcome/dlf104036/brscan5-1.7.0-0.x86_64.rpm"
 mkdir -p /var/opt
 rpm -Uvh --nosignature --nodigest /tmp/brscan5.rpm
 rm -f /tmp/brscan5.rpm
