@@ -43,8 +43,19 @@ RUN --mount=type=cache,dst=/var/cache \
         for file in /out/usr/share/vala/vapi/*; do [ -e "$file" ] && ln -sfn "$file" /usr/share/vala/vapi/; done; \
         for file in /out/usr/share/gir-1.0/*; do [ -e "$file" ] && ln -sfn "$file" /usr/share/gir-1.0/; done; \
     } && \
+    # Clone an exact revision so upstream history changes cannot break the
+    # build. Astal is pinned to the last commit that ships lang/gjs.
+    clone_pinned() { \
+        repo="$1"; dest="$2"; rev="$3"; \
+        git init -q "$dest"; \
+        git -C "$dest" remote add origin "$repo"; \
+        git -C "$dest" fetch -q --depth 1 origin "$rev"; \
+        git -C "$dest" checkout -q --detach FETCH_HEAD; \
+        test "$(git -C "$dest" rev-parse HEAD)" = "$rev"; \
+    } && \
     # Build Astal libraries (io -> gtk4 -> gjs)
-    git clone --depth 1 https://github.com/aylur/astal.git /tmp/astal && \
+    clone_pinned https://github.com/aylur/astal.git /tmp/astal \
+        7b4d37603c11d2f84338a5da35b1f0676935eb57 && \
     meson setup --prefix /usr /tmp/astal/lib/astal/io/build /tmp/astal/lib/astal/io && \
     DESTDIR=/out meson install -C /tmp/astal/lib/astal/io/build && expose_staged_metadata && \
     meson setup --prefix /usr /tmp/astal/lib/astal/gtk4/build /tmp/astal/lib/astal/gtk4 && \
@@ -63,8 +74,9 @@ RUN --mount=type=cache,dst=/var/cache \
     done && \
     meson setup --prefix /usr /tmp/astal/lang/gjs/build /tmp/astal/lang/gjs && \
     DESTDIR=/out meson install -C /tmp/astal/lang/gjs/build && expose_staged_metadata && \
-    # Build AGS
-    git clone --depth 1 https://github.com/aylur/ags.git /tmp/ags && \
+    # Build AGS (v3.1.2, the revision used by the last successful image)
+    clone_pinned https://github.com/aylur/ags.git /tmp/ags \
+        bbee2f18939f1ec7ff720e717cf305e73635628f && \
     cd /tmp/ags && \
     HOME=/tmp GOCACHE=/tmp/go-cache GOPATH=/tmp/go npm install && \
     meson setup build --prefix /usr && \
