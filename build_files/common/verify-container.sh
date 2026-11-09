@@ -41,7 +41,8 @@ case "$flavor" in
         test -d /usr/share/ags/js/lib
         test -f /usr/share/ags/js/lib/index.ts
         test -f /usr/share/ags/js/node_modules/gnim/dist/gnim.gresource
-        test -f /usr/share/astal/gjs/index.ts
+        # Astal removed its deprecated lang/gjs tree; the image must not ship it.
+        test ! -e /usr/share/astal/gjs
         for soname in \
             libastal-4.so.4 libastal-io.so.0 libastal-wireplumber.so.0 \
             libastal-network.so.0 libastal-battery.so.0 libastal-mpris.so.0 \
@@ -57,6 +58,80 @@ case "$flavor" in
             AstalApps-0.1 AstalPowerProfiles-0.1 AstalNotifd-0.1 AstalBrightness-0.1; do
             test -f "/usr/lib64/girepository-1.0/${typelib}.typelib"
         done
+        # Query GObject metadata for the API contract the bar relies on. This
+        # probe imports typelibs only; it never constructs a service or opens
+        # a display, session bus, system bus, or device.
+        smoke_dir="$(mktemp -d)"
+        trap 'rm -rf -- "$smoke_dir"' EXIT
+        cat > "$smoke_dir/astal-api-contract.js" <<'EOF'
+const { Gio, GObject } = imports.gi;
+
+imports.gi.versions.AstalWp = "0.1";
+imports.gi.versions.AstalNetwork = "0.1";
+
+const AstalWp = imports.gi.AstalWp;
+const AstalNetwork = imports.gi.AstalNetwork;
+
+const READABLE = GObject.ParamFlags.READABLE;
+const WRITABLE = GObject.ParamFlags.WRITABLE;
+
+function typeName(cls) {
+    return GObject.type_name(cls.$gtype);
+}
+
+function expectReadable(cls, name) {
+    const label = `${typeName(cls)}.${name}`;
+    const spec = cls.find_property(name);
+    if (!spec) throw new Error(`${label} is missing`);
+    if (!(spec.flags & READABLE)) throw new Error(`${label} is not readable`);
+    return spec;
+}
+
+function expectProperty(cls, name, valueType, writable) {
+    const label = `${typeName(cls)}.${name}`;
+    const spec = expectReadable(cls, name);
+    const actualType = GObject.type_name(spec.value_type);
+    if (actualType !== valueType) {
+        throw new Error(`${label} has type ${actualType}, expected ${valueType}`);
+    }
+    if (!!(spec.flags & WRITABLE) !== writable) {
+        throw new Error(`${label} writable=${!!(spec.flags & WRITABLE)}, expected ${writable}`);
+    }
+}
+
+function expectMethod(cls, name) {
+    if (typeof cls.prototype[name] !== "function") {
+        throw new Error(`${typeName(cls)}.${name}() is missing`);
+    }
+}
+
+// Audio defaults are read-only on every supported Astal revision; selecting a
+// default goes through the shared Endpoint setter.
+expectProperty(AstalWp.Audio, "default-speaker", "AstalWpEndpoint", false);
+expectProperty(AstalWp.Audio, "default-microphone", "AstalWpEndpoint", false);
+expectProperty(AstalWp.Endpoint, "is-default", "gboolean", true);
+expectMethod(AstalWp.Endpoint, "set_is_default");
+expectMethod(AstalWp.Endpoint, "get_is_default");
+
+// The wifi/wired proxies are always present and read-only; hardware absence is
+// reported by a null device property instead of a null proxy object.
+expectProperty(AstalNetwork.Network, "wifi", "AstalNetworkWifi", false);
+expectProperty(AstalNetwork.Network, "wired", "AstalNetworkWired", false);
+expectProperty(AstalNetwork.Wifi, "device", "NMDeviceWifi", false);
+expectProperty(AstalNetwork.Wired, "device", "NMDeviceEthernet", false);
+expectProperty(AstalNetwork.AccessPoint, "bssid", "gchararray", false);
+expectProperty(AstalNetwork.AccessPoint, "active", "gboolean", false);
+expectReadable(AstalNetwork.AccessPoint, "connections");
+
+if (!Gio.SettingsSchemaSource.get_default()?.lookup("io.astal.notifd", true)) {
+    throw new Error("compiled io.astal.notifd schema is missing");
+}
+
+console.log("ASTAL_API_CONTRACT_OK");
+EOF
+        env -u GI_TYPELIB_PATH -u LD_LIBRARY_PATH /usr/bin/gjs \
+            "$smoke_dir/astal-api-contract.js"
+
         # Exercise the system loader without its cache before rebuilding it.
         rm -f /etc/ld.so.cache
         env -u GI_TYPELIB_PATH -u LD_LIBRARY_PATH /usr/bin/gjs -c '
@@ -66,19 +141,33 @@ case "$flavor" in
         '
 
         # Exercise AGS bundling and GJS imports with a cold loader cache.
-        smoke_dir="$(mktemp -d)"
-        trap 'rm -rf -- "$smoke_dir"' EXIT
         cat > "$smoke_dir/ags-runtime.ts" <<'EOF'
 import * as ags from "ags";
+import * as gtk4 from "ags/gtk4";
+import * as jsxRuntime from "ags/gtk4/jsx-runtime";
 import AstalIO from "gi://AstalIO?version=0.1";
 import AstalMpris from "gi://AstalMpris?version=0.1";
 
-const exports = Object.keys(ags).length;
-if (!exports || !AstalIO || !AstalMpris) {
-    throw new Error(`AGS or Astal modules unavailable (exports=${exports})`);
+const agsExports = Object.keys(ags).length;
+const gtk4Exports = Object.keys(gtk4);
+const jsxExports = Object.keys(jsxRuntime);
+
+if (!agsExports || !AstalIO || !AstalMpris) {
+    throw new Error(`AGS or Astal modules unavailable (exports=${agsExports})`);
 }
-console.log(`AGS_BUNDLE_RUNTIME_OK exports=${exports}`);
+for (const name of ["Astal", "Gtk", "Gdk"]) {
+    if (!gtk4[name]) {
+        throw new Error(`ags/gtk4 export ${name} is missing`);
+    }
+}
+if (!jsxExports.length) {
+    throw new Error("ags/gtk4/jsx-runtime exports are missing");
+}
+console.log(
+    `AGS_BUNDLE_RUNTIME_OK exports=${agsExports} gtk4=${gtk4Exports.join(",")} jsx=${jsxExports.length}`,
+);
 EOF
+
         smoke_status=0
         env -u GI_TYPELIB_PATH -u LD_LIBRARY_PATH -u GI_GIR_PATH -u PKG_CONFIG_PATH \
             timeout 30 /usr/bin/ags run "$smoke_dir/ags-runtime.ts" --gtk 4 \
