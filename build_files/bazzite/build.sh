@@ -45,12 +45,15 @@ dnf5 install -y \
     gnome-keyring \
     gnome-keyring-pam \
     nautilus \
-    polkit-kde
+    polkit-kde \
+    udisks2 \
+    udiskie
 
 # Wire companion services to start automatically with niri
 systemctl --global add-wants niri.service mako.service
 systemctl --global add-wants niri.service swayidle.service
 systemctl --global add-wants niri.service plasma-polkit-agent.service
+systemctl --global add-wants niri.service udiskie.service
 
 # Set Niri as the default session in plasmalogin (native DM in bazzite:stable)
 # and SDDM (belt-and-suspenders if deployed on a system using SDDM).

@@ -40,6 +40,16 @@ firmware, or service contract is incomplete.
 
 Bluefin intentionally does not inherit the Bazzite workstation stack.
 
+## Removable Media Automount (Bazzite niri)
+
+The Bazzite image installs `udiskie` and `udisks2`. The user unit
+`udiskie.service` runs `udiskie --automount --no-tray` with the niri session
+(`niri.service` wants it, and it stops with `graphical-session.target`).
+Removable media mounts automatically under `/run/media/$USER/`. Encrypted
+devices use udiskie's built-in GUI unlock prompt when needed. No tray icon is
+shown. No per-user niri startup entry, `/etc/fstab` entry, or device-specific
+configuration is needed.
+
 ## Deployment
 
 Deploy a tested date tag or digest first. Use `bootc rollback` or the previous

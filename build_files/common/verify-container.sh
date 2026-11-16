@@ -29,10 +29,25 @@ grep -Eq '^g qemu 107([[:space:]]|$)' /usr/lib/sysusers.d/qemu.conf
 
 case "$flavor" in
     bazzite)
-        for package in rocm-opencl rocm-hip rocm-clinfo rocm-smi niri hyprlock brscan5; do
+        for package in rocm-opencl rocm-hip rocm-clinfo rocm-smi niri hyprlock brscan5 udiskie udisks2; do
             rpm -q "$package" >/dev/null
         done
         rpm -q gjs gtk4-layer-shell >/dev/null
+        # udiskie: automounter CLI, its Python module, and the custom user unit
+        # wired to niri. The CLI must advertise the flags the unit depends on.
+        test -x /usr/bin/udiskie
+        /usr/bin/udiskie --version >/dev/null
+        /usr/bin/udiskie --help | grep -Fq -- '--automount'
+        /usr/bin/udiskie --help | grep -Fq -- '--no-tray'
+        python3 -c 'import udiskie.udisks2, udiskie.automount' >/dev/null
+        test -f /usr/lib/systemd/user/udiskie.service
+        grep -Fxq 'ExecStart=/usr/bin/udiskie --automount --no-tray' \
+            /usr/lib/systemd/user/udiskie.service
+        grep -Fxq 'PartOf=graphical-session.target' /usr/lib/systemd/user/udiskie.service
+        grep -Fxq 'Requisite=graphical-session.target' /usr/lib/systemd/user/udiskie.service
+        test -L /etc/systemd/user/niri.service.wants/udiskie.service
+        test "$(readlink -f /etc/systemd/user/niri.service.wants/udiskie.service)" = \
+            "/usr/lib/systemd/user/udiskie.service"
         test -L /usr/lib64/libgtk4-layer-shell.so
         test -e /usr/lib64/libgtk4-layer-shell.so.0
         test "$(readlink -f /usr/lib64/libgtk4-layer-shell.so)" = \
@@ -202,6 +217,157 @@ EOF
         test -d /opt/brother/scanner/brscan5
         test -f /usr/lib/systemd/user/ags.service
         test -f /usr/lib/systemd/user/swayidle.service
+
+        # Start the shipped udiskie against a private dbus-daemon hosting a fake
+        # UDisks2 (no host bus, devices, or disks). Proves connect, startup
+        # calls, liveness, and clean exit; it does not prove real automount.
+        cat > "$smoke_dir/udiskie-startup-probe.py" <<'EOF'
+import os
+import signal
+import subprocess
+import sys
+import tempfile
+
+import gi
+
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib  # noqa: E402
+
+BUS_NAME = "org.freedesktop.UDisks2"
+MANAGER_PATH = "/org/freedesktop/UDisks2/Manager"
+ROOT_PATH = "/org/freedesktop/UDisks2"
+ALIVE_SECONDS = 8
+MANAGER_VERSION = "2.11.2"
+
+XML = """
+<node>
+  <interface name="org.freedesktop.DBus.ObjectManager">
+    <method name="GetManagedObjects">
+      <arg type="a{oa{sa{sv}}}" name="objects" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.freedesktop.UDisks2.Manager">
+    <property name="Version" type="s" access="read"/>
+  </interface>
+</node>
+"""
+
+counts = {"GetManagedObjects": 0, "Version": 0}
+
+
+def on_method(conn, sender, path, iface, method, params, invocation):
+    if method == "GetManagedObjects":
+        counts["GetManagedObjects"] += 1
+        invocation.return_value(GLib.Variant("(a{oa{sa{sv}}})", ({},)))
+    else:
+        invocation.return_dbus_error("org.freedesktop.DBus.Error.UnknownMethod", method)
+
+
+def on_get_property(conn, sender, path, iface, name):
+    if iface == "org.freedesktop.UDisks2.Manager" and name == "Version":
+        counts["Version"] += 1
+        return GLib.Variant("s", MANAGER_VERSION)
+    return None
+
+
+def main():
+    with tempfile.TemporaryDirectory(prefix="udiskie-probe-") as workdir:
+        sock = os.path.join(workdir, "bus")
+        env = dict(os.environ)
+        env["DBUS_SYSTEM_BUS_ADDRESS"] = "unix:path=" + sock
+        env["DBUS_SESSION_BUS_ADDRESS"] = "unix:path=" + sock
+        env["XDG_RUNTIME_DIR"] = workdir
+        env["HOME"] = workdir
+        env.pop("DISPLAY", None)
+        env.pop("WAYLAND_DISPLAY", None)
+
+        bus_proc = None
+        udiskie = None
+        try:
+            bus_proc = subprocess.Popen(
+                ["dbus-daemon", "--session", "--nofork", "--address=unix:path=" + sock],
+                env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            for _ in range(100):
+                if os.path.exists(sock):
+                    break
+                GLib.usleep(20000)
+            else:
+                raise RuntimeError("private dbus-daemon socket never appeared")
+
+            os.environ.update(env)
+            conn = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+            node = Gio.DBusNodeInfo.new_for_xml(XML)
+            om = node.lookup_interface("org.freedesktop.DBus.ObjectManager")
+            mg = node.lookup_interface("org.freedesktop.UDisks2.Manager")
+            conn.register_object(ROOT_PATH, om, on_method, None, None)
+            conn.register_object(MANAGER_PATH, mg, on_method, on_get_property, None)
+
+            # Spawn udiskie only after the fake owns the name, so its startup
+            # calls cannot race registration.
+            name_loop = GLib.MainLoop()
+            acquired = []
+
+            def on_name_acquired(_conn, name, _data=None):
+                acquired.append(name)
+                name_loop.quit()
+
+            timeout = GLib.timeout_add_seconds(10, name_loop.quit)
+            Gio.bus_own_name_on_connection(
+                conn, BUS_NAME, Gio.BusNameOwnerFlags.NONE, on_name_acquired, None)
+            name_loop.run()
+            GLib.source_remove(timeout)
+            if acquired != [BUS_NAME]:
+                raise RuntimeError("fake UDisks2 name was not acquired")
+
+            log_path = os.path.join(workdir, "udiskie.log")
+            with open(log_path, "w") as log:
+                udiskie = subprocess.Popen(
+                    ["/usr/bin/udiskie", "--automount", "--no-tray"],
+                    env=env, stdout=log, stderr=subprocess.STDOUT,
+                )
+                alive_loop = GLib.MainLoop()
+                GLib.timeout_add_seconds(ALIVE_SECONDS, alive_loop.quit)
+                alive_loop.run()
+                alive = udiskie.poll() is None
+                if alive:
+                    udiskie.send_signal(signal.SIGTERM)
+                exit_code = udiskie.wait(timeout=10)
+
+            with open(log_path) as log:
+                output = log.read()
+            print(output)
+            # udiskie has no SIGTERM handler, so a clean stop is death by SIGTERM
+            # (-15), which systemd also treats as success by default.
+            ok = (alive and exit_code == -signal.SIGTERM
+                  and counts["GetManagedObjects"] >= 1 and counts["Version"] >= 1
+                  and "Traceback" not in output)
+            print("counts=%r alive=%r exit=%r" % (counts, alive, exit_code))
+            if ok:
+                print("UDISKIE_STARTUP_PROBE_OK")
+                return 0
+            print("UDISKIE_STARTUP_PROBE_FAILED", file=sys.stderr)
+            return 1
+        finally:
+            if udiskie is not None and udiskie.poll() is None:
+                udiskie.kill()
+                udiskie.wait(timeout=10)
+            if bus_proc is not None and bus_proc.poll() is None:
+                bus_proc.terminate()
+                bus_proc.wait(timeout=10)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+EOF
+        probe_output="$smoke_dir/udiskie-probe.log"
+        python3 "$smoke_dir/udiskie-startup-probe.py" >"$probe_output" 2>&1 || {
+            cat "$probe_output" >&2
+            printf 'udiskie startup probe failed\n' >&2
+            exit 1
+        }
+        cat "$probe_output"
+        grep -Fq 'UDISKIE_STARTUP_PROBE_OK' "$probe_output"
         ;;
     bluefin)
         grep -Eq '^ID="?bluefin"?([[:space:]]|$)' /etc/os-release
@@ -215,5 +381,9 @@ EOF
         test ! -e /usr/lib/systemd/user/plasma-polkit-agent.service
         test ! -e /usr/lib/systemd/user/swayidle.service
         test ! -e /opt/brother/scanner/brscan5
+        # Only the custom unit and its niri wiring are asserted absent; the
+        # upstream udiskie package is not assumed to be missing from Bluefin.
+        test ! -e /usr/lib/systemd/user/udiskie.service
+        test ! -e /etc/systemd/user/niri.service.wants/udiskie.service
         ;;
 esac
