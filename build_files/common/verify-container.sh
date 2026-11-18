@@ -29,10 +29,13 @@ grep -Eq '^g qemu 107([[:space:]]|$)' /usr/lib/sysusers.d/qemu.conf
 
 case "$flavor" in
     bazzite)
-        for package in rocm-opencl rocm-hip rocm-clinfo rocm-smi niri hyprlock brscan5 udiskie udisks2; do
+        for package in rocm-opencl rocm-hip rocm-clinfo rocm-smi niri hyprlock brscan5 udiskie udisks2 grim; do
             rpm -q "$package" >/dev/null
         done
         rpm -q gjs gtk4-layer-shell >/dev/null
+        # On Fedora, /usr/sbin may be a symlink to /usr/bin.
+        test "$(realpath -e -- "$(command -v grim)")" = /usr/bin/grim
+        grim -h >/dev/null 2>&1
         # udiskie: automounter CLI, its Python module, and the custom user unit
         # wired to niri. The CLI must advertise the flags the unit depends on.
         test -x /usr/bin/udiskie

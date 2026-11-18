@@ -33,6 +33,7 @@ dnf5 install -y \
     brightnessctl \
     fuzzel \
     gphoto2 \
+    grim \
     waybar \
     wlopm \
     mako \
